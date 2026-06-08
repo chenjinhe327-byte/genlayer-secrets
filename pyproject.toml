@@ -1,0 +1,16 @@
+[project]
+name = "genlayer-secrets"
+version = "0.1.0"
+description = "Secure credential management for GenLayer Intelligent Contracts"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = ["genlayer-py"]
+
+[project.scripts]
+genlayer-secrets = "genlayer_secrets.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["genlayer_secrets*"]
+exclude = ["contracts*", "tests*", "examples*", "venv*", "docs*"]
