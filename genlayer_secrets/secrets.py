@@ -1,29 +1,35 @@
-cat > genlayer_secrets/secrets.py << 'EOF'
 from genlayer import *
 from typing import Dict, Optional
 from datetime import datetime
 
+
 class SecureSecretManager(gl.Contract):
-    """GenLayer 安全凭证管理器 - 核心类"""
-    
+    """
+    Secure Secret Manager for GenLayer Intelligent Contracts
+    - Secrets are stored encrypted on-chain
+    - Only injected safely inside validator nondet execution
+    """
+
     def __init__(self):
-        self.secrets: Dict[str, str] = {}      # secret_name -> encrypted_blob
-        self.metadata: Dict[str, dict] = {}    # secret_name -> metadata
+        self.secrets: Dict[str, str] = {}        # name -> encrypted_blob
+        self.metadata: Dict[str, dict] = {}      # name -> metadata
         self.audit_log: list = []
 
     @gl.public.write
     def store_secret(self, name: str, encrypted_blob: str, expires_at: int = 0):
-        """存储加密后的 Secret（客户端需提前加密）"""
+        """Store encrypted secret (client must encrypt before calling)"""
         caller = gl.get_caller()
+        
         self.secrets[name] = encrypted_blob
         self.metadata[name] = {
             "owner": caller,
             "expires_at": expires_at,
             "version": 1,
-            "last_used": 0
+            "last_used": 0,
+            "stored_at": int(datetime.now().timestamp())
         }
         self._log_audit(caller, name, "store")
-        print(f"✅ Secret '{name}' 已安全存储")
+        print(f"✅ Secret '{name}' stored securely.")
 
     def _log_audit(self, caller: str, name: str, action: str):
         self.audit_log.append({
@@ -34,32 +40,31 @@ class SecureSecretManager(gl.Contract):
         })
 
     def _inject_secret(self, name: str) -> Optional[str]:
-        """仅在 validator 执行时安全注入（关键安全点）"""
+        """Internal method - only safe to call inside nondet block"""
         if name not in self.secrets:
             return None
-        
+
         meta = self.metadata.get(name, {})
         if meta.get("expires_at", 0) > 0 and meta["expires_at"] < int(datetime.now().timestamp()):
             return None
-            
+
+        # In real validator environment, decryption happens here
         secret = self.secrets[name]
         self.metadata[name]["last_used"] = int(datetime.now().timestamp())
         self._log_audit(gl.get_caller(), name, "use")
-        return secret   # 真实环境中在这里进行解密
+        return secret
 
+    @gl.public.read
     def make_secure_web_get(self, url: str, secret_name: str = "api_key", **kwargs):
-        """使用 Secret 安全发起网页请求"""
+        """Safe web request with injected secret"""
         def nondet_block():
             secret = self._inject_secret(secret_name)
             if not secret:
                 return {"error": "Secret invalid or expired"}
-            
-            headers = kwargs.get("headers", {})
-            headers["Authorization"] = f"Bearer {secret}"
-            
-            return gl.nondet.web.get(url, headers=headers)
-        
-        return gl.eq_principle.execute(nondet_block)
-EOF
 
-echo "✅ secrets.py 已写入"
+            headers = kwargs.get("headers", {})
+            headers["Authorization"] = f"Bearer {secret}"   # 根据实际 API 调整
+
+            return gl.nondet.web.get(url, headers=headers)
+
+        return gl.eq_principle.execute(nondet_block)
